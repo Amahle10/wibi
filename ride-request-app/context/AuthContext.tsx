@@ -1,13 +1,24 @@
+// context/AuthContext.tsx
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import axios from 'axios';
 
 // ---- Types ----
-interface User {
+export interface User {
   id: string;
   name: string;
   email: string;
   role: string;
+}
+
+interface LoginResponse {
+  token: string;
+  user: User;
+}
+
+interface RegisterResponse {
+  token: string;
+  user: User;
 }
 
 interface AuthContextType {
@@ -46,19 +57,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     load();
   }, []);
 
+  // ---- Login ----
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
-      const res = await axios.post(`${API_BASE}/auth/login`, { email, password });
-      const { token, user } = res.data;
-      if (!token || !user) return false;
+      const res = await axios.post<LoginResponse>(`${API_BASE}/auth/login`, { email, password });
+      const { token, user: userData } = res.data;
+
+      if (!token || !userData) return false;
 
       setUserToken(token);
-      setUser(user);
+      setUser(userData);
 
       await SecureStore.setItemAsync('userToken', token);
-      await SecureStore.setItemAsync('userData', JSON.stringify(user));
+      await SecureStore.setItemAsync('userData', JSON.stringify(userData));
 
-      // Do NOT navigate here
       return true;
     } catch (err) {
       console.error('Login error', err);
@@ -66,9 +78,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // ---- Register ----
   const register = async (name: string, email: string, password: string): Promise<boolean> => {
     try {
-      await axios.post(`${API_BASE}/auth/register`, { name, email, password });
+      const res = await axios.post<RegisterResponse>(`${API_BASE}/auth/register`, { name, email, password });
+      const { token, user: userData } = res.data;
+
+      if (!token || !userData) return false;
+
+      setUserToken(token);
+      setUser(userData);
+
+      await SecureStore.setItemAsync('userToken', token);
+      await SecureStore.setItemAsync('userData', JSON.stringify(userData));
+
       return true;
     } catch (err) {
       console.error('Register error', err);
@@ -76,6 +99,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // ---- Logout ----
   const logout = async (): Promise<void> => {
     try {
       setUserToken(null);
