@@ -1,57 +1,57 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
-import Admin from '../models/Admin.js'; // import your Admin model
 
 export async function register(req, res) {
   try {
     const { name, email, password, role } = req.body;
-    if (!name || !email || !password)
-      return res.status(400).json({ msg: 'Missing fields' });
 
-    if (role === 'adminuser') {
-      // Check if admin already exists
-      let admin = await Admin.findOne({ email });
-      if (admin)
-        return res.status(400).json({ msg: 'Admin already exists' });
-
-      const hash = await bcrypt.hash(password, 10);
-
-      admin = new Admin({ name, email, password: hash });
-      await admin.save();
-
-      const token = jwt.sign(
-        { id: admin._id },
-        process.env.JWT_SECRET || 'secret',
-        { expiresIn: '7d' }
-      );
-
-      return res.json({
-        token,
-        user: { id: admin._id, name: admin.name, email: admin.email, role: 'adminuser' },
-      });
-    } else {
-      // Default: normal user
-      let user = await User.findOne({ email });
-      if (user)
-        return res.status(400).json({ msg: 'User already exists' });
-
-      const hash = await bcrypt.hash(password, 10);
-
-      user = new User({ name, email, password: hash, role: 'user' });
-      await user.save();
-
-      const token = jwt.sign(
-        { id: user._id },
-        process.env.JWT_SECRET || 'secret',
-        { expiresIn: '7d' }
-      );
-
-      return res.json({
-        token,
-        user: { id: user._id, name: user.name, email: user.email, role: 'user' },
-      });
+    // Ensure required fields exist
+    if (!name || !email || !password) {
+      return res.status(400).json({ msg: 'Missing required fields' });
     }
+
+    // ❌ Prevent unauthorized roles
+    if (role === 'adminuser' || role === 'driver') {
+      return res.status(403).json({ msg: 'Not allowed to register this type of user here' });
+    }
+
+    // Check for existing user
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(400).json({ msg: 'User already exists' });
+    }
+
+    // Hash password
+    const salt = await bcrypt.genSalt(10);
+    const hash = await bcrypt.hash(password, salt);
+
+    // Save as normal user
+    const user = new User({
+      name,
+      email,
+      password: hash,
+      role: 'user', // force role = user
+    });
+
+    await user.save();
+
+    // Create JWT
+    const token = jwt.sign(
+      { id: user._id, role: user.role },
+      process.env.JWT_SECRET || 'secret',
+      { expiresIn: '7d' }
+    );
+
+    res.status(201).json({
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+    });
   } catch (err) {
     console.error('Register Error:', err);
     res.status(500).json({ msg: 'Server error' });
@@ -60,27 +60,33 @@ export async function register(req, res) {
 
 export async function login(req, res) {
   try {
-    const { email, password, role } = req.body;
+    const { email, password } = req.body;
+
     if (!email || !password)
       return res.status(400).json({ msg: 'Missing fields' });
 
-    let account;
-    if (role === 'adminuser') {
-      account = await Admin.findOne({ email });
-      if (!account) return res.status(400).json({ msg: 'Invalid credentials' });
-    } else {
-      account = await User.findOne({ email });
-      if (!account) return res.status(400).json({ msg: 'Invalid credentials' });
-    }
+    const user = await User.findOne({ email });
+    if (!user)
+      return res.status(400).json({ msg: 'Invalid credentials' });
 
-    const isMatch = await bcrypt.compare(password, account.password);
-    if (!isMatch) return res.status(400).json({ msg: 'Invalid credentials' });
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch)
+      return res.status(400).json({ msg: 'Invalid credentials' });
 
-    const token = jwt.sign({ id: account._id }, process.env.JWT_SECRET || 'secret', { expiresIn: '7d' });
+    const token = jwt.sign(
+      { id: user._id, role: user.role },
+      process.env.JWT_SECRET || 'secret',
+      { expiresIn: '7d' }
+    );
 
-    return res.json({
+    res.json({
       token,
-      user: { id: account._id, name: account.name, email: account.email, role: role || 'user' },
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
     });
   } catch (err) {
     console.error('Login Error:', err);

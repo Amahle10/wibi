@@ -1,23 +1,20 @@
-# Use Node 18 Alpine
-FROM node:18-alpine
+# Use Node.js LTS
+FROM node:20
 
 # Set working directory
-WORKDIR /app
+WORKDIR /usr/src/app
 
-# Copy package.json and package-lock.json
-COPY package.json package-lock.json* ./
+# Copy package files
+COPY package*.json ./
 
 # Install dependencies
-RUN npm ci || npm install
+RUN npm install
 
-# Copy all source files
+# Copy source code
 COPY . .
 
-# Expose the port your server runs on
+# Expose backend port
 EXPOSE 5000
 
-# Set environment variable for ESM (optional, usually not needed if "type": "module" in package.json)
-ENV NODE_OPTIONS=--experimental-specifier-resolution=node
-
-# Start server
-CMD ["node", "src/server.js"]
+# Start the server
+CMD ["node", "server.js"]
