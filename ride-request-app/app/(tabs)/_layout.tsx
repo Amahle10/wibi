@@ -2,11 +2,17 @@
 import React from 'react';
 import { Slot } from 'expo-router';
 import AuthGuard from './AuthGuard';
+import { KeyboardAvoidingView, Platform } from 'react-native';
 
 export default function TabsLayout() {
   return (
-    <AuthGuard>
-      <Slot />
-    </AuthGuard>
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
+      <AuthGuard>
+        <Slot />
+      </AuthGuard>
+    </KeyboardAvoidingView>
   );
 }

@@ -1,154 +1,157 @@
 import React, { useEffect, useState } from 'react';
 import {
   View,
-  Text,
-  Button,
   TextInput,
   FlatList,
   TouchableOpacity,
-  StyleSheet,
+  Text,
   KeyboardAvoidingView,
-  TouchableWithoutFeedback,
-  Keyboard,
   Platform,
+  StyleSheet,
 } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { fetchPlaceSuggestions } from '../../services/geocodeService';
 import { useAuth } from '../../context/AuthContext';
+import { Menu, Provider, IconButton } from 'react-native-paper';
 
 export default function Home() {
-  const { logout } = useAuth();
-  const [region, setRegion] = useState<any>(null);
+  const { logout, user } = useAuth();
+  const [location, setLocation] = useState<Location.LocationObjectCoords | null>(null);
   const [destination, setDestination] = useState('');
   const [suggestions, setSuggestions] = useState<any[]>([]);
-  const [selectedLocation, setSelectedLocation] = useState<any>(null);
+  const [region, setRegion] = useState<any>(null);
+  const [menuVisible, setMenuVisible] = useState(false);
 
+  // Fetch user location on mount
   useEffect(() => {
     (async () => {
-      let { status } = await Location.requestForegroundPermissionsAsync();
+      const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        console.log('Permission to access location was denied');
+        console.log('Permission denied');
         return;
       }
-      let location = await Location.getCurrentPositionAsync({});
+
+      const loc = await Location.getCurrentPositionAsync({});
+      setLocation(loc.coords);
       setRegion({
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
+        latitude: loc.coords.latitude,
+        longitude: loc.coords.longitude,
         latitudeDelta: 0.01,
         longitudeDelta: 0.01,
       });
     })();
   }, []);
 
-  const fetchSuggestions = async (text: string) => {
+  // Fetch autocomplete suggestions
+  const handleDestinationChange = async (text: string) => {
     setDestination(text);
-    if (text.length < 2) {
+    if (text.length > 2) {
+      const results = await fetchPlaceSuggestions(text);
+      setSuggestions(results);
+    } else {
       setSuggestions([]);
-      return;
     }
-    const results: any = await fetchPlaceSuggestions(text);
-    setSuggestions(results || []);
   };
-
-  const handleSelectSuggestion = (item: any) => {
-    setDestination(item.description);
-    setSuggestions([]);
-    setSelectedLocation({
-      latitude: item.latitude,
-      longitude: item.longitude,
-    });
-    setRegion({
-      ...region,
-      latitude: item.latitude,
-      longitude: item.longitude,
-    });
-  };
-
-  if (!region) return <Text style={{ padding: 20 }}>Loading map...</Text>;
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 20}
-    >
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+    <Provider>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
+      >
         <View style={{ flex: 1 }}>
-          <MapView style={{ flex: 1 }} region={region}>
-            <Marker coordinate={region} title="You are here" />
-            {selectedLocation && (
-              <Marker
-                coordinate={selectedLocation}
-                pinColor="green"
-                title="Destination"
-              />
-            )}
-          </MapView>
+          {/* Top-left menu */}
+          <View style={styles.menuContainer}>
+            <Menu
+              visible={menuVisible}
+              onDismiss={() => setMenuVisible(false)}
+              anchor={
+                <IconButton
+                  icon="menu"
+                  size={28}
+                  onPress={() => setMenuVisible(true)}
+                />
+              }
+            >
+              <Menu.Item onPress={() => alert('Go to Profile')} title="Profile" />
+              <Menu.Item onPress={logout} title="Logout" />
+            </Menu>
+          </View>
 
-          <View style={styles.overlay}>
+          {/* Map */}
+          {region && (
+            <MapView
+              style={{ flex: 1 }}
+              initialRegion={region}
+              showsUserLocation={true}
+            >
+              {location && (
+                <Marker
+                  coordinate={{
+                    latitude: location.latitude,
+                    longitude: location.longitude,
+                  }}
+                  title="You are here"
+                />
+              )}
+            </MapView>
+          )}
+
+          {/* Destination Input */}
+          <View style={styles.inputContainer}>
             <TextInput
-              style={styles.input}
-              placeholder="Enter destination..."
+              placeholder="Enter destination"
               value={destination}
-              onChangeText={fetchSuggestions}
+              onChangeText={handleDestinationChange}
+              style={styles.input}
             />
 
-            {/* Autocomplete suggestions */}
-            {suggestions.length > 0 && (
-              <View style={styles.suggestionBox}>
-                <FlatList
-                  data={suggestions}
-                  keyExtractor={(item, index) => index.toString()}
-                  renderItem={({ item }) => (
-                    <TouchableOpacity
-                      style={styles.suggestionItem}
-                      onPress={() => handleSelectSuggestion(item)}
-                    >
-                      <Text>{item.description}</Text>
-                    </TouchableOpacity>
-                  )}
-                />
-              </View>
-            )}
-
-            <Button title="Logout" onPress={logout} />
+            {/* Suggestions List */}
+            <FlatList
+              data={suggestions}
+              keyExtractor={(item) => item.place_id}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  onPress={() => {
+                    setDestination(item.description);
+                    setSuggestions([]);
+                  }}
+                >
+                  <Text style={{ padding: 10 }}>{item.description}</Text>
+                </TouchableOpacity>
+              )}
+              style={{ maxHeight: 150 }}
+            />
           </View>
         </View>
-      </TouchableWithoutFeedback>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </Provider>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: {
+  menuContainer: {
     position: 'absolute',
-    bottom: 20,
-    width: '90%',
-    alignSelf: 'center',
+    top: Platform.OS === 'ios' ? 50 : 20,
+    left: 10,
+    zIndex: 1000,
+  },
+  inputContainer: {
+    position: 'absolute',
+    bottom: 0,
+    width: '100%',
     backgroundColor: 'white',
-    borderRadius: 12,
-    padding: 10,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
+    padding: 15,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    elevation: 8,
   },
   input: {
-    backgroundColor: '#f2f2f2',
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 10,
     padding: 10,
-    borderRadius: 8,
-    marginBottom: 5,
-  },
-  suggestionBox: {
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    maxHeight: 150,
     marginBottom: 10,
-  },
-  suggestionItem: {
-    padding: 10,
-    borderBottomWidth: 1,
-    borderColor: '#eee',
   },
 });
